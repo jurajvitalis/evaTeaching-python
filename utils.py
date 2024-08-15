@@ -22,6 +22,8 @@ FitObjPair = namedtuple('FitObjPair', ['fitness', 'objective'])
 def plot_experiment(evals, lower, mean, upper, legend_name=''):
     plt.plot(evals, mean, label=legend_name)
     plt.fill_between(evals, lower, upper, alpha=0.25)
+def plot_experiment_no_fill(evals, mean, legend_name=''):
+    plt.plot(evals, mean, label=legend_name)
 
 # reads the run logs and computes experiment statisticts (those used for plots)
 # Arguments:
@@ -79,12 +81,15 @@ def read_run_file(filename):
 #   rename_dict - a mapping of exp_id -> legend name, can be used to rename 
 #                 entries in the plot legend
 #   stat_type - either 'objective' or 'fitness' - the type of values to plot
-def plot_experiments(prefix, exp_ids, rename_dict=None, stat_type='objective'):
+def plot_experiments(prefix, exp_ids, rename_dict=None, stat_type='objective', fill=True):
     if not rename_dict:
         rename_dict = dict()
     for e in exp_ids:
         evals, lower, mean, upper = get_plot_data(prefix, e, stat_type)
-        plot_experiment(evals, lower, mean, upper, rename_dict.get(e, e))
+        if fill:
+            plot_experiment(evals, lower, mean, upper, rename_dict.get(e, e))
+        else:
+            plot_experiment_no_fill(evals, mean, rename_dict.get(e, e))
     plt.legend()
     plt.xlabel('Fitness evaluations')
     if stat_type == 'objective':
