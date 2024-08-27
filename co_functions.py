@@ -114,8 +114,7 @@ def numerical_derivative(f, x):
         dx = xph[i] - x[i]
         d[i] = (f(xph).fitness - fx)/dx
     
-    return -d # the fitness is the negative of the function - need to take 
-              # negative again (to match the Java implementation)
+    return d
 
 # bellow is commented code that shows how to use the functions and also can be 
 # used to create plots of the functions with 2 variables
