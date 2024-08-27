@@ -44,9 +44,31 @@ def get_experiment_stats(prefix, exp_id, stat_type='objective'):
             np.percentile(data_frame, q=75, axis=0),
             np.max(data_frame, axis=0))
 
+
+# Added to simplify plotting from multiple directories
+def get_experiment_stats_multi(prefixes, exp_id, stat_type='objective'):
+    data = []
+    for prefix in prefixes:
+        if len(glob.glob(f'{prefix}/{exp_id}_*.{stat_type}')) == 0:
+            continue
+        for fn in glob.glob(f'{prefix}/{exp_id}_*.{stat_type}'):
+            evals, stats = read_run_file(fn)
+            data.append(pd.Series([s.max for s in stats], index=evals))
+        data_frame = pd.DataFrame(data)
+        data_frame.fillna(method='ffill', inplace=True, axis=1)
+        return (data_frame.columns.values, np.min(data_frame, axis=0),
+                np.percentile(data_frame, q=25, axis=0),
+                np.mean(data_frame, axis=0),
+                np.percentile(data_frame, q=75, axis=0),
+                np.max(data_frame, axis=0))
+
+
 # the same as get_experiment_stats, but returns only some of the data
-def get_plot_data(prefix, exp_id, stat_type='objective'):
-    evals, lower, q25, mean, q75, upper = get_experiment_stats(prefix, exp_id, stat_type)
+def get_plot_data(prefix, exp_id, stat_type='objective', multi_folder=False):
+    if multi_folder:
+        evals, lower, q25, mean, q75, upper = get_experiment_stats_multi(prefix, exp_id, stat_type)
+    else:
+        evals, lower, q25, mean, q75, upper = get_experiment_stats(prefix, exp_id, stat_type)
     return evals, q25, mean, q75
 
 # computes the experimets stats for both objective and fitness values and prints
@@ -81,11 +103,11 @@ def read_run_file(filename):
 #   rename_dict - a mapping of exp_id -> legend name, can be used to rename 
 #                 entries in the plot legend
 #   stat_type - either 'objective' or 'fitness' - the type of values to plot
-def plot_experiments(prefix, exp_ids, rename_dict=None, stat_type='objective', fill=True):
+def plot_experiments(prefix, exp_ids, rename_dict=None, stat_type='objective', fill=True, multi_folder=False):
     if not rename_dict:
         rename_dict = dict()
     for e in exp_ids:
-        evals, lower, mean, upper = get_plot_data(prefix, e, stat_type)
+        evals, lower, mean, upper = get_plot_data(prefix, e, stat_type, multi_folder=multi_folder)
         if fill:
             plot_experiment(evals, lower, mean, upper, rename_dict.get(e, e))
         else:
