@@ -6,6 +6,7 @@ import warnings
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt 
+import re
 
 import multi_utils
 
@@ -63,12 +64,84 @@ def get_experiment_stats_multi(prefixes, exp_id, stat_type='objective'):
                 np.max(data_frame, axis=0))
 
 
+def get_experiment_stats_gp(prefix, exp_id, stat_type='objective'):
+    data = []
+    for fn in glob.glob(f'{prefix}/{exp_id}_*.{stat_type}'):
+        evals, stats = read_run_file(fn)
+        data.append(pd.Series([s.max for s in stats], index=evals))
+
+    # Reindex the series to one common index, filling missing entries with 'nan'
+    min_index = min([s.index.min() for s in data])
+    max_index = max([s.index.max() for s in data])
+    common_index = pd.RangeIndex(start=min_index, stop=max_index + 1)
+
+    # # Reindex all experiments to fixed index (like pop_size * max_gen)
+    # gen_count = int(re.search(r'gen=(\d+)', fn).group(1))
+    # try:
+    #     pop_size = int(re.search(r'pop=(\d+)', fn).group(1))
+    # except AttributeError:
+    #     pop_size = int(re.search(r'mu=(\d+)', fn).group(1))
+    # common_index = pd.RangeIndex(start=min_index, stop=pop_size * gen_count)
+
+    reindexed_data = [s.reindex(common_index, fill_value=None) for s in data]
+
+    data_frame = pd.DataFrame(reindexed_data)
+    data_frame.fillna(method='ffill', inplace=True, axis=1)
+    return (data_frame.columns.values, np.min(data_frame, axis=0),
+            np.percentile(data_frame, q=25, axis=0),
+            np.mean(data_frame, axis=0),
+            np.percentile(data_frame, q=75, axis=0),
+            np.max(data_frame, axis=0))
+
+
+# Added to simplify plotting from multiple directories
+def get_experiment_stats_gp_multi(prefixes, exp_id, stat_type='objective'):
+    data = []
+    for prefix in prefixes:
+        if len(glob.glob(f'{prefix}/{exp_id}_*.{stat_type}')) == 0:
+            continue
+        for fn in glob.glob(f'{prefix}/{exp_id}_*.{stat_type}'):
+            evals, stats = read_run_file(fn)
+            data.append(pd.Series([s.max for s in stats], index=evals))
+
+        # Reindex the series to one common index, filling missing entries with 'nan'
+        min_index = min([s.index.min() for s in data])
+        max_index = max([s.index.max() for s in data])
+        common_index = pd.RangeIndex(start=min_index, stop=max_index + 1)
+
+        # # Reindex all experiments to fixed index (like pop_size * max_gen)
+        # gen_count = int(re.search(r'gen=(\d+)', fn).group(1))
+        # try:
+        #     pop_size = int(re.search(r'pop=(\d+)', fn).group(1))
+        # except AttributeError:
+        #     pop_size = int(re.search(r'mu=(\d+)', fn).group(1))
+        # common_index = pd.RangeIndex(start=min_index, stop=pop_size * gen_count)
+
+        reindexed_data = [s.reindex(common_index, fill_value=None) for s in data]
+
+        data_frame = pd.DataFrame(reindexed_data)
+        data_frame.fillna(method='ffill', inplace=True, axis=1)
+        return (data_frame.columns.values, np.min(data_frame, axis=0),
+                np.percentile(data_frame, q=25, axis=0),
+                np.mean(data_frame, axis=0),
+                np.percentile(data_frame, q=75, axis=0),
+                np.max(data_frame, axis=0))
+
+
 # the same as get_experiment_stats, but returns only some of the data
 def get_plot_data(prefix, exp_id, stat_type='objective', multi_folder=False):
     if multi_folder:
         evals, lower, q25, mean, q75, upper = get_experiment_stats_multi(prefix, exp_id, stat_type)
     else:
         evals, lower, q25, mean, q75, upper = get_experiment_stats(prefix, exp_id, stat_type)
+    return evals, q25, mean, q75
+
+
+def get_plot_data_gp(prefix, exp_id, stat_type='objective', multi_folder=False):
+    if multi_folder:
+        evals, lower, q25, mean, q75, upper = get_experiment_stats_gp_multi(prefix, exp_id, stat_type)
+    else:
+        evals, lower, q25, mean, q75, upper = get_experiment_stats_gp(prefix, exp_id, stat_type)
     return evals, q25, mean, q75
 
 # computes the experimets stats for both objective and fitness values and prints
@@ -91,6 +164,9 @@ def read_run_file(filename):
     with open(filename) as f:
         for line in f.readlines():
             e, x, m, n = line.split(' ')
+            if n == '\n' or x == '':
+                # Error handling - invalid lines produced when overflows happen in GP, just skip them
+                continue
             evals.append(int(e))
             stats.append(GenStats(min=float(n), max=float(x), mean=float(m)))
 
@@ -118,6 +194,24 @@ def plot_experiments(prefix, exp_ids, rename_dict=None, stat_type='objective', f
         plt.ylabel('Objective value')
     if stat_type == 'fitness':
         plt.ylabel('Fitness value')
+
+
+def plot_experiments_gp(prefix, exp_ids, rename_dict=None, stat_type='objective', fill=True, multi_folder=False):
+    if not rename_dict:
+        rename_dict = dict()
+    for e in exp_ids:
+        evals, lower, mean, upper = get_plot_data_gp(prefix, e, stat_type, multi_folder=multi_folder)
+        if fill:
+            plot_experiment(evals, lower, mean, upper, rename_dict.get(e, e))
+        else:
+            plot_experiment_no_fill(evals, mean, rename_dict.get(e, e))
+    plt.legend()
+    plt.xlabel('Fitness evaluations')
+    if stat_type == 'objective':
+        plt.ylabel('Objective value')
+    if stat_type == 'fitness':
+        plt.ylabel('Fitness value')
+
 
 # a tuple for the stats about a single generation
 GenStats = namedtuple('GenStats', ['min', 'max', 'mean'])
